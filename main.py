@@ -173,13 +173,18 @@ class yt_downloader():
 
             if os.path.isfile(f'{filename}.mp4'):
                 return
-            
+
 
             if not self.stream_dict:
                 if res != 'audio':
                     self.stream_dict[res] = self.yt.streams.filter(resolution=res, adaptive=True, file_extension='mp4', type='video').first()
-                self.stream_dict['audio'] = self.yt.streams.filter(file_extension='mp4', type='audio')[-1]
+                
+                # download the highest available resolution if specified res is not available
+                if self.stream_dict[res] is None:
+                    self.stream_dict[res] = self.yt.streams.filter(adaptive=True, file_extension='mp4', type='video').order_by('resolution').desc().first()
 
+                self.stream_dict['audio'] = self.yt.streams.filter(file_extension='mp4', type='audio')[-1]
+   
 
             if res != 'audio':
                 
@@ -329,7 +334,6 @@ class MainWindow(qtw.QMainWindow):
         #     self.ui.curr_download_text.setText('Video Error')
 
 
-
         except ConnectionResetError:
             self.ui.curr_download_text.setText('Connection Reset. Restarting...')
             self.dl_start()
@@ -339,8 +343,8 @@ class MainWindow(qtw.QMainWindow):
             self.ui.curr_download_text.setText('Connection Error')
 
 
-        except  AttributeError:
-            self.ui.curr_download_text.setText('Resolution Not Found Error')
+        # except  AttributeError:
+        #     self.ui.curr_download_text.setText('Resolution Not Found Error')
 
         except FileNotFoundError:
             self.ui.curr_download_text.setText('ffmpeg Not Installed')
@@ -367,7 +371,7 @@ class MainWindow(qtw.QMainWindow):
         self.ui.custom_dir_name_check.setEnabled(True)
         self.ui.download_setting_option.setEnabled(True)
         self.ui.download_button.setEnabled(True)
-  
+
 
         self.update_dl_ready()
 

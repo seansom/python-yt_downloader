@@ -15,3 +15,5 @@ Some things to know:
 - GUI may freeze while fetching the YouTube video or when compiling
 
 - if an Unknown Error occurs, you can see more details at the console
+
+- if a video resolution is not available for download, it will automatically download highest resolution available
