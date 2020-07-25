@@ -1,0 +1,4 @@
+pytube3
+hurry.filesize
+PyQt5
+ffmpeg-python
