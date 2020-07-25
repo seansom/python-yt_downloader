@@ -333,7 +333,6 @@ class MainWindow(qtw.QMainWindow):
         # except (KeyError, pytube.exceptions.RegexMatchError):
         #     self.ui.curr_download_text.setText('Video Error')
 
-
         except ConnectionResetError:
             self.ui.curr_download_text.setText('Connection Reset. Restarting...')
             self.dl_start()
@@ -342,10 +341,6 @@ class MainWindow(qtw.QMainWindow):
         except ConnectionError:
             self.ui.curr_download_text.setText('Connection Error')
 
-
-        # except  AttributeError:
-        #     self.ui.curr_download_text.setText('Resolution Not Found Error')
-
         except FileNotFoundError:
             self.ui.curr_download_text.setText('ffmpeg Not Installed')
             return
@@ -353,10 +348,10 @@ class MainWindow(qtw.QMainWindow):
         except urllib.error.URLError:
             self.ui.curr_download_text.setText('No Internet')
             
-        # except Exception as e:
-        #     self.ui.curr_download_text.setText('Unknown Error')
-        #     print(e)
-        #     return
+        except Exception as e:
+            self.ui.curr_download_text.setText('Unknown Error')
+            print(e)
+            return
 
 
         self.ui.url_box.setText('')
