@@ -348,6 +348,7 @@ class MainWindow(qtw.QMainWindow):
             self.ui.curr_download_text.setText('No Internet')
             
         except:
+            self.ui.curr_download_text.setText('Unexpected Error')
             traceback.print_exc()
 
 
