@@ -48,7 +48,7 @@ class yt_downloader():
 
         Returns:
             list of strings
-            i.e. ['144p', '240p', '360']
+            i.e. ['144p', '240p', '360p']
         """        
 
         if self.res_options:
@@ -179,9 +179,9 @@ class yt_downloader():
                 if res != 'audio':
                     self.stream_dict[res] = self.yt.streams.filter(resolution=res, adaptive=True, file_extension='mp4', type='video').first()
                 
-                # download the highest available resolution if specified res is not available
-                if self.stream_dict[res] is None:
-                    self.stream_dict[res] = self.yt.streams.filter(adaptive=True, file_extension='mp4', type='video').order_by('resolution').desc().first()
+                    # download the highest available resolution if specified res is not available
+                    if self.stream_dict[res] is None:
+                        self.stream_dict[res] = self.yt.streams.filter(adaptive=True, file_extension='mp4', type='video').order_by('resolution').desc().first()
 
                 self.stream_dict['audio'] = self.yt.streams.filter(file_extension='mp4', type='audio')[-1]
    
@@ -348,10 +348,10 @@ class MainWindow(qtw.QMainWindow):
         except urllib.error.URLError:
             self.ui.curr_download_text.setText('No Internet')
             
-        except Exception as e:
-            self.ui.curr_download_text.setText('Unknown Error')
-            print(e)
-            return
+        # except Exception as e:
+        #     self.ui.curr_download_text.setText('Unknown Error')
+        #     print(e)
+        #     return
 
 
         self.ui.url_box.setText('')
@@ -399,6 +399,8 @@ def main():
     os.chdir(os.path.dirname(sys.argv[0]))
     app = qtw.QApplication(sys.argv)
     window = MainWindow(app)
+
+    print("Loading UI. Please wait.")
 
     window.show()
     sys.exit(app.exec_())
