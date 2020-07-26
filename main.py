@@ -1,9 +1,8 @@
-from pytube import YouTube
-from pytube import Playlist
+from pytube import YouTube, Playlist
 from hurry.filesize import size
 from pathlib import Path
 from PyQt5 import QtWidgets as qtw
-import sys, os, re, ffmpeg, pytube, urllib
+import sys, os, re, ffmpeg, pytube, urllib, traceback
 
 
 # pyinstaller cannot see second-level imports
@@ -330,8 +329,8 @@ class MainWindow(qtw.QMainWindow):
 
             self.ui.curr_download_text.setText('Download Complete')
 
-        # except (KeyError, pytube.exceptions.RegexMatchError):
-        #     self.ui.curr_download_text.setText('Video Error')
+        except (KeyError, pytube.exceptions.RegexMatchError):
+            self.ui.curr_download_text.setText('PyTube Error')
 
         except ConnectionResetError:
             self.ui.curr_download_text.setText('Connection Reset. Restarting...')
@@ -348,10 +347,8 @@ class MainWindow(qtw.QMainWindow):
         except urllib.error.URLError:
             self.ui.curr_download_text.setText('No Internet')
             
-        # except Exception as e:
-        #     self.ui.curr_download_text.setText('Unknown Error')
-        #     print(e)
-        #     return
+        except:
+            traceback.print_exc()
 
 
         self.ui.url_box.setText('')
