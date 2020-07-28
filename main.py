@@ -4,8 +4,8 @@ from pathlib import Path
 from PyQt5 import QtWidgets as qtw
 import sys, os, re, ffmpeg, pytube, urllib, traceback
 
+from PyQt5.QtCore import *
 
-# pyinstaller cannot see second-level imports
 
 try:
     from yt_downloader_gui.mainwindow import Ui_MainWindow
@@ -218,7 +218,18 @@ class yt_downloader():
         print('=============================')
 
 
+class Worker(QRunnable):
 
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+     
+
+    @pyqtSlot()
+    def run(self):
+        self.fn(*self.args, **self.kwargs)
 
 
 
@@ -227,6 +238,8 @@ class MainWindow(qtw.QMainWindow):
         super().__init__(parent)
 
         self.app = app
+        self.threadpool = QThreadPool()
+        print(f"Multithreading with maximum {self.threadpool.maxThreadCount()} threads")
 
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
@@ -322,10 +335,11 @@ class MainWindow(qtw.QMainWindow):
         self.ui.download_button.setEnabled(False)
 
         try:
+            for_download = yt_downloader(url, isplaylist=isplaylist, callback=self.show_progress)
             if dirname:
-                yt_downloader(url, isplaylist=isplaylist, callback=self.show_progress).download(res, dirname)
+                pass
             else:
-                yt_downloader(url, isplaylist=isplaylist, callback=self.show_progress).download(res)
+                print("Hello World!")
 
             self.ui.curr_download_text.setText('Download Complete')
 
@@ -370,8 +384,6 @@ class MainWindow(qtw.QMainWindow):
 
 
     def show_progress(self, stream, chunk, bytes_remaining):
-
-        self.app.processEvents()
 
         progress = round((((stream.filesize - bytes_remaining) / stream.filesize) * 100), 2)
         print(f'Downloading: {stream.title} || {progress}')
