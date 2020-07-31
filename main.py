@@ -147,7 +147,7 @@ class yt_downloader():
 
 
     
-    def download(self, res, dirname=None):
+    def download(self, res, dirname=None, error_callback=None):
 
         """Function that downloads the video at the res specified and inside an optional directory.
         If playlist, this function will recursively download all videos in the playlist, all with the same resolution.
@@ -239,14 +239,42 @@ class Worker(QRunnable):
         self.fn = fn
         self.args = args
         self.kwargs = kwargs
-     
 
     @pyqtSlot()
     def run(self):
         try:
             self.fn(*self.args, **self.kwargs)
-        except:
-            pass
+
+        # except pytube.exceptions.RegexMatchError:
+        #     print('PyTube Error')
+
+        # except ConnectionResetError:
+        #     self.ui.curr_download_text.setText('Connection Reset. Restarting...')
+        #     self.dl_start()
+
+        # except ConnectionError:
+        #     self.ui.curr_download_text.setText('Connection Error')
+
+        # except FileNotFoundError:
+        #     self.ui.curr_download_text.setText('ffmpeg Not Installed')
+        #     return None
+
+        # except urllib.error.URLError:
+        #     self.ui.curr_download_text.setText('No Internet')
+            
+        except Exception as e:
+            error_name = type(e).__name__
+
+            print(f'=============================\n{error_name} OCCURED.\n=============================')
+            traceback.print_exc()
+            print(f'=============================\n{error_name} OCCURED.\n=============================')
+
+            if len(error_name) > 30:
+                error_name = error_name[:29] + '...'
+
+            self.kwargs['error_callback'](error_name)
+
+            
 
 
 
@@ -351,38 +379,14 @@ class MainWindow(qtw.QMainWindow):
         self.ui.download_setting_option.setEnabled(False)
         self.ui.download_button.setEnabled(False)
 
-        try:
-            for_download = yt_downloader(url, isplaylist=isplaylist, progress_callback=self.show_progress, complete_callback=self.show_complete, finished_callback=self.show_finished)
-            if dirname:
-                worker = Worker(for_download.download, res, dirname)
-            else:
-                worker = Worker(for_download.download, res)
+        for_download = yt_downloader(url, isplaylist=isplaylist, progress_callback=self.show_progress, complete_callback=self.show_complete, finished_callback=self.show_finished)
+        
+        if dirname:
+            worker = Worker(for_download.download, res, dirname=dirname, error_callback=self.showError)
+        else:
+            worker = Worker(for_download.download, res, error_callback=self.showError)
 
-            self.threadpool.start(worker)
-
-
-        except pytube.exceptions.RegexMatchError:
-            self.ui.curr_download_text.setText('PyTube Error')
-
-        except ConnectionResetError:
-            self.ui.curr_download_text.setText('Connection Reset. Restarting...')
-            self.dl_start()
-            return
-
-        except ConnectionError:
-            self.ui.curr_download_text.setText('Connection Error')
-
-        except FileNotFoundError:
-            self.ui.curr_download_text.setText('ffmpeg Not Installed')
-            return
-
-        except urllib.error.URLError:
-            self.ui.curr_download_text.setText('No Internet')
-            
-        except:
-            self.ui.curr_download_text.setText('Unexpected Error')
-            traceback.print_exc()
-
+        self.threadpool.start(worker)
 
 
 
@@ -422,6 +426,25 @@ class MainWindow(qtw.QMainWindow):
 
     def show_finished(self):
         self.ui.curr_download_text.setText('Download Complete')
+        self.ui.url_box.setText('')
+        self.isValid_url('')
+
+        self.ui.custom_dir_name_check.setCheckState(False)
+        self.ui.is_playlist_check.setCheckState(False)
+
+
+        self.ui.url_box.setEnabled(True)
+        self.ui.is_playlist_check.setEnabled(True)
+        self.ui.custom_dir_name_check.setEnabled(True)
+        self.ui.download_setting_option.setEnabled(True)
+        self.ui.download_button.setEnabled(True)
+
+
+        self.update_dl_ready()
+
+
+    def showError(self, error_name):
+        self.ui.curr_download_text.setText(error_name)
         self.ui.url_box.setText('')
         self.isValid_url('')
 
