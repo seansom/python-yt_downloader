@@ -15,29 +15,43 @@ except:
 
 class yt_downloader():
 
-    def __init__(self, url, isplaylist= False, callback=None):
+    def __init__(self, url, isplaylist= False, progress_callback= None, complete_callback= None, finished_callback= None):
 
+        self.url = url
         self.isplaylist = isplaylist
+        self.progress_callback = progress_callback
+        self.complete_callback = complete_callback
+        self.finished_callback = finished_callback
+
         self.res_options = []
         self.filesize_options = []
         self.stream_dict = {}
 
+        self.vid = None
+
+            
+    def prepare_vid(self):
+
+        """Function that retrieves the YouTube stream/s for download.
+        """        
+
+        if self.vid is not None:
+            return
 
         if self.isplaylist:
-            self.sub = []
-
-            playlist = Playlist(url)
+            self.vid = []
+            playlist = Playlist(self.url)
             playlist._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
 
             playlist_len = len(playlist)
 
             for i in range(playlist_len):
-                print(f'Initializing video {i + 1} of {playlist_len}    ||    {playlist[i]}')
-                self.sub.append(yt_downloader(playlist[i], callback=callback))
+                self.vid.append(yt_downloader(playlist[i], progress_callback=self.progress_callback, complete_callback=self.complete_callback))
 
         else:
-            self.yt = YouTube(url, on_progress_callback=callback, on_complete_callback=self.download_complete)
-            
+            print(f'Initializing video for download:    {self.url}')
+            self.vid = YouTube(self.url, on_progress_callback=self.progress_callback, on_complete_callback=self.complete_callback)
+
 
             
     def get_res_options(self):
@@ -49,26 +63,27 @@ class yt_downloader():
             list of strings
             i.e. ['144p', '240p', '360p']
         """        
+        self.prepare_vid()
 
         if self.res_options:
             return self.res_options
 
         if not self.isplaylist:
 
-            for i in self.yt.streams.filter(adaptive=True, file_extension='mp4', type='video'):
+            for i in self.vid.streams.filter(adaptive=True, file_extension='mp4', type='video'):
                 if i.resolution is not None:
                     self.stream_dict[i.resolution] = i
 
             self.res_options = sorted(list(self.stream_dict.keys()), key=(lambda x: int(x[:-1])))
             self.res_options.append('audio')
 
-            self.stream_dict['audio'] = self.yt.streams.filter(file_extension='mp4', type='audio')[-1]
+            self.stream_dict['audio'] = self.vid.streams.filter(file_extension='mp4', type='audio')[-1]
 
 
         elif self.isplaylist:
 
             res_options_li = []
-            for i in self.sub:
+            for i in self.vid:
                 i.get_res_options()
                 res_options_li.append(i.res_options)
 
@@ -101,7 +116,7 @@ class yt_downloader():
             return self.filesize_options
 
         if not self.isplaylist:
-            for res in self.res_options:
+            for res in self.get_res_options():
                 
                 audio_file_size = self.stream_dict['audio'].filesize
 
@@ -118,7 +133,7 @@ class yt_downloader():
 
                 filesize_sum = 0
 
-                for j in self.sub:
+                for j in self.vid:
 
                     if i != 'audio':
                         filesize_sum += (j.stream_dict[i].filesize + j.stream_dict['audio'].filesize)
@@ -138,6 +153,8 @@ class yt_downloader():
         If playlist, this function will recursively download all videos in the playlist, all with the same resolution.
         """        
 
+        self.prepare_vid()
+
         if dirname:
             file_path = os.path.join(Path.home(), 'Downloads', dirname)
             
@@ -155,7 +172,7 @@ class yt_downloader():
 
 
         if not self.isplaylist:
-            filename = self.yt.title
+            filename = self.vid.title
 
             try:
                 filename = re.sub(r'[\\\/\:\*\?\<\>\|]', '_', filename)
@@ -176,13 +193,13 @@ class yt_downloader():
 
             if not self.stream_dict:
                 if res != 'audio':
-                    self.stream_dict[res] = self.yt.streams.filter(resolution=res, adaptive=True, file_extension='mp4', type='video').first()
+                    self.stream_dict[res] = self.vid.streams.filter(resolution=res, adaptive=True, file_extension='mp4', type='video').first()
                 
                     # download the highest available resolution if specified res is not available
                     if self.stream_dict[res] is None:
-                        self.stream_dict[res] = self.yt.streams.filter(adaptive=True, file_extension='mp4', type='video').order_by('resolution').desc().first()
+                        self.stream_dict[res] = self.vid.streams.filter(adaptive=True, file_extension='mp4', type='video').order_by('resolution').desc().first()
 
-                self.stream_dict['audio'] = self.yt.streams.filter(file_extension='mp4', type='audio')[-1]
+                self.stream_dict['audio'] = self.vid.streams.filter(file_extension='mp4', type='audio')[-1]
    
 
             if res != 'audio':
@@ -191,7 +208,6 @@ class yt_downloader():
                 self.stream_dict[res].download(filename='temp_video')
                 self.stream_dict['audio'].download(filename='temp_audio')
 
-                print(os.getcwd())
 
                 video_stream = ffmpeg.input('temp_video.mp4')
                 audio_stream = ffmpeg.input('temp_audio.mp4')
@@ -207,15 +223,13 @@ class yt_downloader():
 
 
         elif self.isplaylist:
-            for i in self.sub:
+            for i in self.vid:
                 i.download(res, dirname)
 
-    
 
-    def download_complete(self, stream, file_path):
-        print('=============================')
-        print(f'Downloaded Path: {file_path}')
-        print('=============================')
+        if self.finished_callback is not None:
+            self.finished_callback()
+
 
 
 class Worker(QRunnable):
@@ -229,7 +243,10 @@ class Worker(QRunnable):
 
     @pyqtSlot()
     def run(self):
-        self.fn(*self.args, **self.kwargs)
+        try:
+            self.fn(*self.args, **self.kwargs)
+        except:
+            pass
 
 
 
@@ -335,15 +352,16 @@ class MainWindow(qtw.QMainWindow):
         self.ui.download_button.setEnabled(False)
 
         try:
-            for_download = yt_downloader(url, isplaylist=isplaylist, callback=self.show_progress)
+            for_download = yt_downloader(url, isplaylist=isplaylist, progress_callback=self.show_progress, complete_callback=self.show_complete, finished_callback=self.show_finished)
             if dirname:
-                pass
+                worker = Worker(for_download.download, res, dirname)
             else:
-                print("Hello World!")
+                worker = Worker(for_download.download, res)
 
-            self.ui.curr_download_text.setText('Download Complete')
+            self.threadpool.start(worker)
 
-        except (KeyError, pytube.exceptions.RegexMatchError):
+
+        except pytube.exceptions.RegexMatchError:
             self.ui.curr_download_text.setText('PyTube Error')
 
         except ConnectionResetError:
@@ -366,6 +384,44 @@ class MainWindow(qtw.QMainWindow):
             traceback.print_exc()
 
 
+
+
+
+    def show_progress(self, stream, chunk, bytes_remaining):
+
+        progress = round((((stream.filesize - bytes_remaining) / stream.filesize) * 100), 2)
+        
+        if stream.type == 'video':
+            print(f'Downloading [video]: {stream.title} || {progress}')
+            title = f'[video] {stream.title}'
+        else:
+            print(f'Downloading [audio]: {stream.title} || {progress}')
+            if progress < 99:
+                title = f'[audio] {stream.title}'
+            else:
+                title = f'[compiling] {stream.title}'
+
+            
+        self.ui.progress_text.setText(f'{progress} %')
+
+        if len(title) > 30:
+            title = title[:29] + '...'
+
+        self.ui.curr_download_text.setText(title)
+
+
+
+
+    def show_complete(self, stream, file_path):
+        print('=============================')
+        print(f'Downloaded Path: {file_path}')
+        print('=============================')
+
+
+
+
+    def show_finished(self):
+        self.ui.curr_download_text.setText('Download Complete')
         self.ui.url_box.setText('')
         self.isValid_url('')
 
@@ -383,27 +439,6 @@ class MainWindow(qtw.QMainWindow):
         self.update_dl_ready()
 
 
-    def show_progress(self, stream, chunk, bytes_remaining):
-
-        progress = round((((stream.filesize - bytes_remaining) / stream.filesize) * 100), 2)
-        print(f'Downloading: {stream.title} || {progress}')
-
-        if stream.type == 'video':
-            title = f'[video] {stream.title}'
-        else:
-            if progress < 99:
-                title = f'[audio] {stream.title}'
-            else:
-                title = f'[compiling] {stream.title}'
-
-            
-        self.ui.progress_text.setText(f'{progress} %')
-
-        if len(title) > 30:
-            title = title[:29] + '...'
-
-        self.ui.curr_download_text.setText(title)
-
 
 def main():
     os.chdir(os.path.dirname(sys.argv[0]))
@@ -418,8 +453,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
