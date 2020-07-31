@@ -12,8 +12,8 @@ Some things to know:
 
 - if invalid chars in the video's title are detected, they are replaced with an underscore or special quotation marks
 
-- GUI may freeze while fetching the YouTube video or when compiling
+- ~~GUI may freeze while fetching the YouTube video or when compiling~~ (fixed with multithreading)
 
-- if an Unknown Error occurs, you can see more details at the console
+- if an error occurs, you can see more details at the console
 
 - if a video resolution is not available for download, it will automatically download highest resolution available
