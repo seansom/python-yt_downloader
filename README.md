@@ -1,6 +1,6 @@
 # python-yt_downloader
 
-Stand-alone application executable (main.exe) can be found in ~./dist directory.
+Stand-alone application executable (main.exe) can be found in ~/dist directory.
 
 Please download ffmpeg first and set it as a PATH environment variable before using the application.
 
