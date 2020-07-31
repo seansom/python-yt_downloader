@@ -354,7 +354,7 @@ class MainWindow(qtw.QMainWindow):
 
     def isValid_url(self, url):
 
-        """Function that determines if user-inputted url is a valid YouTube video url
+        """Function that determines if user-inputted url is a valid YouTube video url.
         """        
 
         if re.search(r'https://www\.youtube\.com/.+', url):
@@ -479,11 +479,12 @@ class MainWindow(qtw.QMainWindow):
 
 
 def main():
+    print("Loading UI. Please wait.")
+
     os.chdir(os.path.dirname(sys.argv[0]))
+
     app = qtw.QApplication(sys.argv)
     window = MainWindow(app)
-
-    print("Loading UI. Please wait.")
 
     window.show()
     sys.exit(app.exec_())

@@ -1,2 +1,0 @@
-update error_callback() to restart dl when error_name = ConnectionResetError
-update error logging in gui
