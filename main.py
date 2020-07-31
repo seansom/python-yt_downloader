@@ -2,9 +2,8 @@ from pytube import YouTube, Playlist
 from hurry.filesize import size
 from pathlib import Path
 from PyQt5 import QtWidgets as qtw
+from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSlot
 import sys, os, re, ffmpeg, pytube, urllib, traceback
-
-from PyQt5.QtCore import *
 
 
 try:
@@ -15,19 +14,19 @@ except:
 
 class yt_downloader():
 
-    def __init__(self, url, isplaylist= False, progress_callback= None, complete_callback= None, finished_callback= None):
-
+    def __init__(self, url, isplaylist= False, progress_callback= None, complete_callback= None):
+        
         self.url = url
         self.isplaylist = isplaylist
         self.progress_callback = progress_callback
         self.complete_callback = complete_callback
-        self.finished_callback = finished_callback
 
         self.res_options = []
         self.filesize_options = []
         self.stream_dict = {}
 
         self.vid = None
+
 
             
     def prepare_vid(self):
@@ -147,7 +146,7 @@ class yt_downloader():
 
 
     
-    def download(self, res, dirname=None, error_callback=None):
+    def download(self, res, dirname=None, finished_callback=None):
 
         """Function that downloads the video at the res specified and inside an optional directory.
         If playlist, this function will recursively download all videos in the playlist, all with the same resolution.
@@ -156,18 +155,19 @@ class yt_downloader():
         self.prepare_vid()
 
         if dirname:
-            file_path = os.path.join(Path.home(), 'Downloads', dirname)
+            filepath = os.path.join(Path.home(), 'Downloads', dirname)
             
-            if os.path.exists(file_path):
-                os.chdir(file_path)
+            if os.path.exists(filepath):
+                os.chdir(filepath)
 
             else:
                 os.chdir(os.path.join(Path.home(), 'Downloads'))
                 os.mkdir(dirname)
-                os.chdir(file_path)
+                os.chdir(filepath)
             
         elif dirname is None:
-            os.chdir(os.path.join(Path.home(), 'Downloads'))
+            filepath = os.path.join(Path.home(), 'Downloads')
+            os.chdir(filepath)
 
 
 
@@ -188,6 +188,7 @@ class yt_downloader():
 
 
             if os.path.isfile(f'{filename}.mp4'):
+                self.complete_callback(None, os.path.join(filepath, f'{filename}.mp4'))
                 return
 
 
@@ -227,9 +228,6 @@ class yt_downloader():
                 i.download(res, dirname)
 
 
-        if self.finished_callback is not None:
-            self.finished_callback()
-
 
 
 class Worker(QRunnable):
@@ -240,28 +238,13 @@ class Worker(QRunnable):
         self.args = args
         self.kwargs = kwargs
 
+
+
     @pyqtSlot()
     def run(self):
         try:
             self.fn(*self.args, **self.kwargs)
-
-        # except pytube.exceptions.RegexMatchError:
-        #     print('PyTube Error')
-
-        # except ConnectionResetError:
-        #     self.ui.curr_download_text.setText('Connection Reset. Restarting...')
-        #     self.dl_start()
-
-        # except ConnectionError:
-        #     self.ui.curr_download_text.setText('Connection Error')
-
-        # except FileNotFoundError:
-        #     self.ui.curr_download_text.setText('ffmpeg Not Installed')
-        #     return None
-
-        # except urllib.error.URLError:
-        #     self.ui.curr_download_text.setText('No Internet')
-            
+          
         except Exception as e:
             error_name = type(e).__name__
 
@@ -269,20 +252,37 @@ class Worker(QRunnable):
             traceback.print_exc()
             print(f'=============================\n{error_name} OCCURED.\n=============================')
 
-            if len(error_name) > 30:
-                error_name = error_name[:29] + '...'
+            # other common errors: pytube.exceptions.RegexMatchError, urllib.error.URLError
 
-            self.kwargs['error_callback'](error_name)
+            if error_name == 'ConnectionResetError':
+                self.kwargs['finished_callback']('Connnection Reset')
+
+            elif error_name == 'ConnectionError':
+                self.kwargs['finished_callback']('Connnection Error')
+
+            elif error_name == 'FileNotFoundError':
+                self.kwargs['finished_callback']('ffmpeg Not Installed')
+
+            elif error_name == 'URLError':
+                self.kwargs['finished_callback']('No Internet')
+
+            else:
+                self.kwargs['finished_callback'](error_name)
+
+            return
+        
+        self.kwargs['finished_callback']()
 
             
 
-
-
 class MainWindow(qtw.QMainWindow):
+
     def __init__(self, app, parent= None):
         super().__init__(parent)
 
         self.app = app
+
+        # setup multithreading
         self.threadpool = QThreadPool()
         print(f"Multithreading with maximum {self.threadpool.maxThreadCount()} threads")
 
@@ -298,9 +298,10 @@ class MainWindow(qtw.QMainWindow):
 
         
         self.ui.custom_dir_name_check.toggled.connect(lambda state: self.custom_dir_name_enabled(state))
-        self.ui.custom_dir_name_box.textChanged.connect(lambda: self.isValid_customd_dir_name(self.ui.custom_dir_name_box.text()))
+        self.ui.custom_dir_name_box.textChanged.connect(lambda: self.isValid_custom_dir_name(self.ui.custom_dir_name_box.text()))
         self.ui.url_box.editingFinished.connect(lambda: self.isValid_url(self.ui.url_box.text()))
         self.ui.download_button.clicked.connect(self.dl_start)
+
 
 
     def update_dl_ready(self):
@@ -329,10 +330,13 @@ class MainWindow(qtw.QMainWindow):
                 self.warninglist.remove('Invalid Dir Name')
 
         self.update_dl_ready()
-
             
 
-    def isValid_customd_dir_name(self, dirname):        
+
+    def isValid_custom_dir_name(self, dirname):
+
+        """Function that determines if user-inputted dir name is valid for Windows.
+        """                
 
         if re.search(r'[\\\/\:\*\?\<\>\|\"]', dirname) or not self.ui.custom_dir_name_box.text():
 
@@ -346,9 +350,12 @@ class MainWindow(qtw.QMainWindow):
         
         self.update_dl_ready()
 
-    
+
 
     def isValid_url(self, url):
+
+        """Function that determines if user-inputted url is a valid YouTube video url
+        """        
 
         if re.search(r'https://www\.youtube\.com/.+', url):
             if 'Invalid URL' in self.warninglist:
@@ -365,6 +372,10 @@ class MainWindow(qtw.QMainWindow):
 
 
     def dl_start(self):
+
+        """Disables UI and starts the download using multithreading.
+        """        
+
         self.ui.curr_download_text.setText('Processing Download')
 
         url = self.ui.url_box.text()
@@ -379,19 +390,21 @@ class MainWindow(qtw.QMainWindow):
         self.ui.download_setting_option.setEnabled(False)
         self.ui.download_button.setEnabled(False)
 
-        for_download = yt_downloader(url, isplaylist=isplaylist, progress_callback=self.show_progress, complete_callback=self.show_complete, finished_callback=self.show_finished)
+        for_download = yt_downloader(url, isplaylist=isplaylist, progress_callback=self.show_progress, complete_callback=self.show_complete)
         
         if dirname:
-            worker = Worker(for_download.download, res, dirname=dirname, error_callback=self.showError)
+            worker = Worker(for_download.download, res, dirname=dirname, finished_callback=self.show_finished)
         else:
-            worker = Worker(for_download.download, res, error_callback=self.showError)
+            worker = Worker(for_download.download, res, finished_callback=self.show_finished)
 
         self.threadpool.start(worker)
 
 
 
-
     def show_progress(self, stream, chunk, bytes_remaining):
+
+        """Callback function to show download progress.
+        """        
 
         progress = round((((stream.filesize - bytes_remaining) / stream.filesize) * 100), 2)
         
@@ -415,36 +428,38 @@ class MainWindow(qtw.QMainWindow):
 
 
 
+    def show_complete(self, stream, filepath):
 
-    def show_complete(self, stream, file_path):
+        """Callback function to show download of a single video is completed.
+        """        
+
+        if self.ui.progress_text.text() != '100.0 %':
+            self.ui.progress_text.setText('100.0 %')
+
         print('=============================')
-        print(f'Downloaded Path: {file_path}')
+        print(f'Downloaded Path: {filepath}')
         print('=============================')
 
 
 
+    def show_finished(self, error_name= None):
 
-    def show_finished(self):
-        self.ui.curr_download_text.setText('Download Complete')
-        self.ui.url_box.setText('')
-        self.isValid_url('')
+        """Callback function to show that the full download of a single video or playlist is completed.
+        """        
 
-        self.ui.custom_dir_name_check.setCheckState(False)
-        self.ui.is_playlist_check.setCheckState(False)
+        if error_name is None:
+            self.ui.curr_download_text.setText('Download Complete')
 
+        elif error_name == 'Connection Reset':
+            self.ui.curr_download_text.setText('Connection Reset. Restarting...')
+            self.dl_start()
+            return
 
-        self.ui.url_box.setEnabled(True)
-        self.ui.is_playlist_check.setEnabled(True)
-        self.ui.custom_dir_name_check.setEnabled(True)
-        self.ui.download_setting_option.setEnabled(True)
-        self.ui.download_button.setEnabled(True)
+        else:
+            if len(error_name) > 30:
+                error_name = error_name[:29] + '...'
+            self.ui.curr_download_text.setText(error_name)
 
-
-        self.update_dl_ready()
-
-
-    def showError(self, error_name):
-        self.ui.curr_download_text.setText(error_name)
         self.ui.url_box.setText('')
         self.isValid_url('')
 
@@ -472,6 +487,7 @@ def main():
 
     window.show()
     sys.exit(app.exec_())
+
 
 
 if __name__ == "__main__":
