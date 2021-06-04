@@ -1,20 +1,20 @@
+from pathlib import Path
+import sys, os, re, ffmpeg, traceback
 from pytube import YouTube, Playlist
 from hurry.filesize import size
-from pathlib import Path
 from PyQt5 import QtWidgets as qtw
 from PyQt5.QtCore import QRunnable, QThreadPool, pyqtSlot
-import sys, os, re, ffmpeg, pytube, urllib, traceback
 
 
 try:
     from yt_downloader_gui.mainwindow import Ui_MainWindow
-except:
+except ModuleNotFoundError:
     sys.exit('Please run gui builder first.')
 
 
 class yt_downloader():
 
-    def __init__(self, url, isplaylist= False, progress_callback= None, complete_callback= None):
+    def __init__(self, url, isplaylist=False, progress_callback=None, complete_callback=None):
         
         self.url = url
         self.isplaylist = isplaylist
@@ -32,7 +32,7 @@ class yt_downloader():
     def prepare_vid(self):
 
         """Function that retrieves the YouTube stream/s for download.
-        """        
+        """
 
         if self.vid is not None:
             return
@@ -48,11 +48,11 @@ class yt_downloader():
                 self.vid.append(yt_downloader(playlist[i], progress_callback=self.progress_callback, complete_callback=self.complete_callback))
 
         else:
-            print(f'Initializing video for download:    {self.url}')
+            print(f'Initializing video for download: {self.url}')
             self.vid = YouTube(self.url, on_progress_callback=self.progress_callback, on_complete_callback=self.complete_callback)
 
 
-            
+
     def get_res_options(self):
 
         """Shows which resolutions are available to download.
@@ -61,7 +61,7 @@ class yt_downloader():
         Returns:
             list of strings
             i.e. ['144p', '240p', '360p']
-        """        
+        """
         self.prepare_vid()
 
         if self.res_options:
@@ -69,9 +69,9 @@ class yt_downloader():
 
         if not self.isplaylist:
 
-            for i in self.vid.streams.filter(adaptive=True, file_extension='mp4', type='video'):
-                if i.resolution is not None:
-                    self.stream_dict[i.resolution] = i
+            for stream in self.vid.streams.filter(adaptive=True, file_extension='mp4', type='video'):
+                if stream.resolution is not None:
+                    self.stream_dict[stream.resolution] = stream
 
             self.res_options = sorted(list(self.stream_dict.keys()), key=(lambda x: int(x[:-1])))
             self.res_options.append('audio')
@@ -79,24 +79,10 @@ class yt_downloader():
             self.stream_dict['audio'] = self.vid.streams.filter(file_extension='mp4', type='audio')[-1]
 
 
-        elif self.isplaylist:
+        else:
 
-            res_options_li = []
-            for i in self.vid:
-                i.get_res_options()
-                res_options_li.append(i.res_options)
-
-
-            for i in res_options_li[0]:
-                iscommon = True
-
-                for j in res_options_li:
-                    if i not in j:
-                        iscommon = False
-                        break
-
-                if iscommon:
-                    self.res_options.append(i)
+            all_res_options = [vid.get_res_options() for vid in self.vid]
+            self.res_options = list(set(all_res_options[0]).intersection(*all_res_options))
 
         return self.res_options
 
@@ -109,37 +95,26 @@ class yt_downloader():
 
         Returns:
             [type]: [description]
-        """                
+        """
         
         if self.filesize_options:
             return self.filesize_options
 
         if not self.isplaylist:
-            for res in self.get_res_options():
-                
-                audio_file_size = self.stream_dict['audio'].filesize
-
-                if res != 'audio':
-                    self.filesize_options.append(size(self.stream_dict[res].filesize + audio_file_size) + 'B')
-                
-                else:
-                    self.filesize_options.append(size(audio_file_size) + 'B')
+            res_options = self.get_res_options()
+            audio_file_size = self.stream_dict['audio'].filesize
+            self.filesize_options = [size(self.stream_dict[res].filesize + audio_file_size) + 'B' if res != 'audio' else size(audio_file_size) + 'B' for res in res_options]
 
 
-        elif self.isplaylist:
+        else:
+            res_options = self.get_res_options()
+            self.filesize_options = [0] * len(res_options)
 
-            for i in self.get_res_options():
+            for index, res in enumerate(res_options):
+                for vid in self.vid:
+                    self.filesize_options[index] += vid.stream_dict[res].filesize + vid.stream_dict['audio'].filesize if res != 'audio' else vid.stream_dict['audio'].filesize
 
-                filesize_sum = 0
-
-                for j in self.vid:
-
-                    if i != 'audio':
-                        filesize_sum += (j.stream_dict[i].filesize + j.stream_dict['audio'].filesize)
-                    else:
-                        filesize_sum += j.stream_dict[i].filesize
-
-                self.filesize_options.append(size(filesize_sum) + 'B')
+            self.filesize_options = [size(filesize) + 'B' for filesize in self.filesize_options]
 
 
         return self.filesize_options
@@ -150,7 +125,7 @@ class yt_downloader():
 
         """Function that downloads the video at the res specified and inside an optional directory.
         If playlist, this function will recursively download all videos in the playlist, all with the same resolution.
-        """        
+        """
 
         self.prepare_vid()
 
@@ -174,18 +149,15 @@ class yt_downloader():
         if not self.isplaylist:
             filename = self.vid.title
 
-            try:
-                filename = re.sub(r'[\\\/\:\*\?\<\>\|]', '_', filename)
-                filename = re.sub(r'[\"]', '\'', filename)
-            except:
-                pass
+            filename = re.sub(r'[\\\/\:\*\?\<\>\|]', '_', filename)
+            filename = re.sub(r'[\"]', '\'', filename)
 
-            try:
+
+            if os.path.isfile('temp_video.mp4'):
                 os.remove('temp_video.mp4')
-                os.remove('temp_audio.mp4')
-            except:
-                pass
 
+            if os.path.isfile('temp_audio.mp4'):
+                os.remove('temp_audio.mp4')
 
             if os.path.isfile(f'{filename}.mp4'):
                 self.complete_callback(None, os.path.join(filepath, f'{filename}.mp4'))
@@ -204,11 +176,9 @@ class yt_downloader():
    
 
             if res != 'audio':
-                
 
                 self.stream_dict[res].download(filename='temp_video')
                 self.stream_dict['audio'].download(filename='temp_audio')
-
 
                 video_stream = ffmpeg.input('temp_video.mp4')
                 audio_stream = ffmpeg.input('temp_audio.mp4')
@@ -219,18 +189,24 @@ class yt_downloader():
                 os.remove('temp_audio.mp4')
 
 
-            elif res == 'audio':
+            else:
                 self.stream_dict['audio'].download(filename=f'{filename}')
 
 
-        elif self.isplaylist:
-            for i in self.vid:
-                i.download(res, dirname)
+        else:
+            for vid in self.vid:
+                vid.download(res, dirname)
 
 
 
 
 class Worker(QRunnable):
+    """Thread handler used to disable UI freezing during
+    downloads.
+
+    Args:
+        QRunnable (QRunnable): PyQt5 class for handling thread.
+    """
 
     def __init__(self, fn, *args, **kwargs):
         super(Worker, self).__init__()
@@ -276,8 +252,12 @@ class Worker(QRunnable):
             
 
 class MainWindow(qtw.QMainWindow):
+    """The main window for the program.
 
-    def __init__(self, app, parent= None):
+    Args:
+        qtw (QMainWindow): PyQt5 Main Window Widget
+    """
+    def __init__(self, app, parent=None):
         super().__init__(parent)
 
         self.app = app
@@ -296,7 +276,6 @@ class MainWindow(qtw.QMainWindow):
         self.warninglist = ['Invalid URL']
         self.update_dl_ready()
 
-        
         self.ui.custom_dir_name_check.toggled.connect(lambda state: self.custom_dir_name_enabled(state))
         self.ui.custom_dir_name_box.textChanged.connect(lambda: self.isValid_custom_dir_name(self.ui.custom_dir_name_box.text()))
         self.ui.url_box.editingFinished.connect(lambda: self.isValid_url(self.ui.url_box.text()))
@@ -355,7 +334,7 @@ class MainWindow(qtw.QMainWindow):
     def isValid_url(self, url):
 
         """Function that determines if user-inputted url is a valid YouTube video url.
-        """        
+        """
 
         if re.search(r'https://www\.youtube\.com/.+', url):
             if 'Invalid URL' in self.warninglist:
@@ -374,7 +353,7 @@ class MainWindow(qtw.QMainWindow):
     def dl_start(self):
 
         """Disables UI and starts the download using multithreading.
-        """        
+        """
 
         self.ui.curr_download_text.setText('Processing Download')
 
@@ -404,7 +383,7 @@ class MainWindow(qtw.QMainWindow):
     def show_progress(self, stream, chunk, bytes_remaining):
 
         """Callback function to show download progress.
-        """        
+        """
 
         progress = round((((stream.filesize - bytes_remaining) / stream.filesize) * 100), 2)
         
@@ -442,10 +421,10 @@ class MainWindow(qtw.QMainWindow):
 
 
 
-    def show_finished(self, error_name= None):
+    def show_finished(self, error_name=None):
 
         """Callback function to show that the full download of a single video or playlist is completed.
-        """        
+        """
 
         if error_name is None:
             self.ui.curr_download_text.setText('Download Complete')
@@ -493,3 +472,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # playlist_test = yt_downloader("https://www.youtube.com/playlist?list=PL_FMCVPxjBP8VEjS10HTgcK5nnxvDp01n", isplaylist=True)
+    # video_test = yt_downloader("https://www.youtube.com/watch?v=JNz0ng19kuw&ab_channel=941941")
+    # print(playlist_test.get_res_options())
+    # print(playlist_test.get_filesize_options())

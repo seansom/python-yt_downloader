@@ -1,4 +1,4 @@
-pytubex
+pytube
 hurry.filesize
 PyQt5
 ffmpeg-python
